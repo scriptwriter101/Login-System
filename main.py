@@ -1,99 +1,186 @@
-from flask import Flask, render_template, request, redirect, url_for
+import json
+import random
+from datetime import datetime
 import os
-import secrets
+import time
+#searched a couple of things up but you can read the readme.md for more info
+class Stock:
+    def __init__(self, symbol, initial_price):
+        self.symbol = symbol
+        self.base_price = initial_price
+        self.price = initial_price
 
-app = Flask(__name__)
+    def update_price(self):
+        change = random.uniform(-1, 1)
+        self.price = self.base_price * (1 + change / 25)
 
-# Get the signup secret from the environment
-SIGNUP_SECRET = os.getenv('SIGNUP_SECRET')
+class StockMarket:
+    def __init__(self):
+        self.stocks = {}
 
-# ... (rest of the code will go here)
+    def add_stock(self, stock):
+        self.stocks[stock.symbol] = stock
 
-@app.route('/signup', methods=['GET', 'POST'])
+    def get_stock_price(self, symbol):
+        return self.stocks.get(symbol).price if symbol in self.stocks else None
+
+    def update_prices(self):
+        for stock in self.stocks.values():
+            stock.update_price()
+
+    def print_prices(self):
+        for symbol, stock in self.stocks.items():
+            print(f"Stock {symbol}: Price ${stock.price:.2f}")
+
+class User:
+    def __init__(self, name, password, balance=10000.0):
+        self.name = name
+        self.password = password
+        self.balance = balance
+        self.portfolio = {}
+
+    def buy_stock(self, market, symbol, quantity):
+        price = market.get_stock_price(symbol)
+        if not price:
+            print(f"Stock '{symbol}' not found.")
+            return
+
+        total_cost = price * quantity
+        if total_cost > self.balance:
+            print(f"Insufficient funds to buy {quantity} shares of '{symbol}'.")
+            return
+
+        self.balance -= total_cost
+        self.portfolio[symbol] = self.portfolio.get(symbol, 0) + quantity
+        print(f"{self.name}: Bought {quantity} shares of '{symbol}' for ${total_cost:.2f}. Balance: ${self.balance:.2f}")
+
+    def sell_stock(self, market, symbol, quantity):
+        if symbol not in self.portfolio or self.portfolio[symbol] < quantity:
+            print(f"You don't have enough shares of '{symbol}' to sell.")
+            return
+
+        price = market.get_stock_price(symbol)
+        if not price:
+            print(f"Stock '{symbol}' not found.")
+            return
+
+        total_sale = price * quantity
+        self.balance += total_sale
+        self.portfolio[symbol] -= quantity
+        print(f"{self.name}: Sold {quantity} shares of '{symbol}' for ${total_sale:.2f}. Balance: ${self.balance:.2f}")
+
+    def print_portfolio(self):
+        print(f"{self.name}'s Portfolio:")
+        if not self.portfolio:
+            print("You don't own any stocks.")
+        else:
+            for symbol, quantity in self.portfolio.items():
+                print(f"{symbol}: {quantity} shares")
+
+    def save_data(self):
+        data = {
+            "name": self.name,
+            "password": self.password,
+            "balance": self.balance,
+            "portfolio": self.portfolio
+        }
+        try:
+            os.makedirs("users", exist_ok=True)
+            with open(f"users/{self.name}_data.json", "w") as f:
+                json.dump(data, f, default=str)
+        except IOError:
+            print(f"Error saving data for {self.name}")
+
+def signup_or_login():
+    while True:
+        choice = input("Do you want to (L)ogin or (S)ignup? ").upper()
+        if choice == 'S':
+            user = signup()
+            if user:
+                return user
+        elif choice == 'L':
+            user = login()
+            if user:
+                return user
+        else:
+            print("Invalid choice. Please enter 'L' or 'S'.")
+
 def signup():
-    if request.method == 'POST':
-        username = request.form.get('username')
-        secret = request.form.get('secret')
+    name = input("Enter a username: ")
+    password = input("Enter a password: ")
+    confirm_password = input("Confirm your password: ")
 
-        if secret == SIGNUP_SECRET:
-            # Store the username (e.g., in a file or database)
-            # ... (Replace this with your actual storage mechanism)
-            with open('users.txt', 'a') as f:
-                f.write(f'{username}\n')
-            return redirect(url_for('login'))
-        else:
-            error = 'Invalid secret!'
-            return render_template('index.html', error=error)
-    else:
-        return render_template('index.html')
+    if password != confirm_password:
+        print("Passwords do not match.")
+        return None
 
-@app.route('/login', methods=['GET', 'POST'])
+    try:
+        with open(f"users/{name}_data.json", "r") as f:
+            print(f"User '{name}' already exists. Please choose another username.")
+            return None
+    except FileNotFoundError:
+        user = User(name, password)
+        user.save_data()
+        print(f"User '{name}' created successfully!")
+        return user
+    except IOError:
+        print("Error accessing user data.")
+        return None
+
 def login():
-    if request.method == 'POST':
-        username = request.form.get('username')
-        # ... (Get the user's ID and roles using Replit Auth)
-        user_id = request.headers.get('X-Replit-User-Id')
-        user_name = request.headers.get('X-Replit-User-Name')
-        user_roles = request.headers.get('X-Replit-User-Roles')
+    name = input("Enter your username: ")
+    password = input("Enter your password: ")
 
-        # Verify if the user exists (replace with your storage method)
-        if username in open('users.txt').read().splitlines():
-            return render_template('login.html', user_id=user_id, user_name=user_name, user_roles=user_roles)
-        else:
-            error = 'Invalid username!'
-            return render_template('index.html', error=error)
-    else:
-        return render_template('index.html')
+    try:
+        with open(f"users/{name}_data.json", "r") as f:
+            data = json.load(f)
+            if data["password"] == password:
+                user = User(data["name"], data["password"], data["balance"])
+                user.portfolio = data["portfolio"]
+                print(f"Welcome back, {user.name}!")
+                return user
+            else:
+                print("Incorrect password.")
+                return None
+    except FileNotFoundError:
+        print(f"User '{name}' not found.")
+        return None
+    except IOError:
+        print("Error accessing user data.")
+        return None
 
-if __name__ == '__main__':
-    app.run(debug=True)
-  
-from flask import Flask, render_template, request, redirect, url_for
-import os
-import secrets
+if __name__ == "__main__":
+    user = signup_or_login()
 
-app = Flask(__name__)
-
-# Get the signup secret from the environment
-SIGNUP_SECRET = os.getenv('SIGNUP_SECRET')
-
-# ... (rest of the code will go here)# ... (previous code)
-
-@app.route('/signup', methods=['GET', 'POST'])
-def signup():
-    if request.method == 'POST':
-        username = request.form.get('username')
-        secret = request.form.get('secret')
-
-        if secret == SIGNUP_SECRET:
-            # Store the username (e.g., in a file or database)
-            # ... (Replace this with your actual storage mechanism)
-            with open('users.txt', 'a') as f:
-                f.write(f'{username}\n')
-            return redirect(url_for('login'))
-        else:
-            error = 'Invalid secret!'
-            return render_template('index.html', error=error)
-    else:
-        return render_template('index.html')# ... (previous code)
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        username = request.form.get('username')
-        # ... (Get the user's ID and roles using Replit Auth)
-        user_id = request.headers.get('X-Replit-User-Id')
-        user_name = request.headers.get('X-Replit-User-Name')
-        user_roles = request.headers.get('X-Replit-User-Roles')
-
-        # Verify if the user exists (replace with your storage method)
-        if username in open('users.txt').read().splitlines():
-            return render_template('login.html', user_id=user_id, user_name=user_name, user_roles=user_roles)
-        else:
-            error = 'Invalid username!'
-            return render_template('index.html', error=error)
-    else:
-        return render_template('index.html')
+   
+    market = StockMarket()
+    market.add_stock(Stock("AAPL", 250.0))
+    market.add_stock(Stock("GOOGL", 190.0))
+    market.add_stock(Stock("MSFT", 460.0))
+    market.add_stock(Stock("AMZN", 200.0)) 
+    market.add_stock(Stock("TSLA", 250.0)) 
 
 
+    try:
+        while True:
+            market.update_prices()
+            market.print_prices()
+            action = input("Choose an action: (B)uy, (S)ell, view (P)ortfolio: ").upper()
 
+            if action == 'B':
+                symbol = input("Enter the symbol of the stock you want to buy: ").upper()
+                quantity = int(input("Enter the quantity of shares you want to buy: "))
+                user.buy_stock(market, symbol, quantity)
+            elif action == 'S':
+                symbol = input("Enter the symbol of the stock you want to sell: ").upper()
+                quantity = int(input("Enter the quantity of shares you want to sell: "))
+                user.sell_stock(market, symbol, quantity)
+            elif action == 'P':
+                user.print_portfolio()
+            else:
+                print("Invalid input. Please enter 'B', 'S', or 'P'.")
+
+            time.sleep(1)  
+    except KeyboardInterrupt:
+        print("\nProgram stopped. Saving data...")
+        user.save_data()
