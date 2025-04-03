@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login/Signup</title>
+</head>
+<body>
+    <h1>Login or Signup</h1>
+    {% if error %}
+        <p style="color: red;">{{ error }}</p>
+    {% endif %}
+    <h2>Login</h2>
+    <form method="post" action="/login">
+        <label for="username">Username:</label>
+        <input type="text" name="username" id="username" required><br><br>
+        <input type="submit" value="Login">
+    </form>
+    <h2>Signup</h2>
+    <form method="post" action="/signup">
+        <label for="username">Username:</label>
+        <input type="text" name="username" id="username" required><br><br>
+        <label for="secret">Secret:</label>
+        <input type="text" name="secret" id="secret" required><br><br>
+        <input type="submit" value="Signup">
+    </form>
+</body>
+</html>
